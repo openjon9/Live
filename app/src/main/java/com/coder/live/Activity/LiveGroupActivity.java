@@ -1,9 +1,17 @@
-package com.coder.live;
+package com.coder.live.Activity;
 
-import android.content.Context;
+import android.support.v7.app.AppCompatActivity;
+import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
+import android.widget.EditText;
+import android.widget.ListView;
 import android.widget.Toast;
 
+import com.coder.live.Adapter.MyAdapter;
+import com.coder.live.IM;
+import com.coder.live.Class.Person;
+import com.coder.live.R;
 import com.coder.live.Class.TCConstants;
 import com.coder.live.Class.TCSimpleUserInfo;
 import com.tencent.TIMCallBack;
@@ -24,23 +32,31 @@ import com.tencent.TIMValueCallBack;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Created by Rey on 2018/6/26.
- */
+public class LiveGroupActivity extends AppCompatActivity implements TIMConnListener, TIMMessageListener, TIMUserStatusListener, IM.TCChatRoomListener {
 
-public class Live implements TIMConnListener, TIMMessageListener, TIMUserStatusListener, IM.TCChatRoomListener {
-
-    private  Context context;
-    String TAG = "liteavsdk";
 
     private TIMConversation conversation;
+    private LiveGroupActivity context;
+    String TAG = "liteavsdk";
     private TIMMessage lastMsg;
+    private EditText edtext;
+    private ListView listview;
+    List<Person> mlist = new ArrayList<>();
+    private MyAdapter adapter;
 
-    public Live(Context applicationContext) {
-        context = applicationContext;
-        TIMManager.getInstance().init(applicationContext);//初始化
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_live_group);
+        context = this;
+        listview = (ListView) findViewById(R.id.listview);
+        edtext = (EditText) findViewById(R.id.edtext);
+        adapter = new MyAdapter(context, mlist);
+        listview.setAdapter(adapter);
+        TIMManager.getInstance().init(getApplicationContext());//初始化
         Login();
         //禁用 Crash 上报
         TIMManager.getInstance().disableCrashReport();
@@ -49,6 +65,22 @@ public class Live implements TIMConnListener, TIMMessageListener, TIMUserStatusL
         TIMManager.getInstance().setUserStatusListener(this);
         TIMManager.getInstance().setConnectionListener(this);
 
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        mlist = null;
+        adapter = null;
+        deleteGroup();
+
+    }
+
+    public void sendtext(View view) {
+        if (edtext.equals("")) {
+            return;
+        }
+        send(edtext.getText().toString());
     }
 
     /********連線監聽**********/
@@ -106,8 +138,6 @@ public class Live implements TIMConnListener, TIMMessageListener, TIMUserStatusL
     public void Login() {
 // identifier 为用户名，userSig 为用户登录凭证
         TIMUser user = new TIMUser();
-      //  user.setAccountType("29649");
-        //user.setAppIdAt3rd("1400104543");
         user.setIdentifier(TCConstants.USER_ID);
 //发起登录请求
         TIMManager.getInstance().login(TCConstants.IMSDK_APPID, user, TCConstants.USERSIG, new TIMCallBack() {//回调接口
@@ -207,6 +237,7 @@ public class Live implements TIMConnListener, TIMMessageListener, TIMUserStatusL
             public void onSuccess(String groupId) {//回调返回创建的群组 會自動產生ID
                 Toast.makeText(context, "创建直播大群成功", Toast.LENGTH_SHORT).show();
                 TCConstants.GROUP_ID = groupId;
+                Log.d(TAG, "groupId:" + groupId);
                 //取得會話物件          會話類型(這是列舉只有4種),群ID
                 conversation = TIMManager.getInstance().getConversation(TIMConversationType.Group, groupId);
             }
@@ -239,8 +270,6 @@ public class Live implements TIMConnListener, TIMMessageListener, TIMUserStatusL
         TIMGroupManager.getInstance().deleteGroup(TCConstants.GROUP_ID, new TIMCallBack() {
             @Override
             public void onError(int code, String desc) {
-                //错误码 code 和错误描述 desc，可用于定位请求失败原因
-                //错误码 code 列表请参见错误码表
                 Log.d(TAG, "解散群组失败code:" + code + "\tdesc:" + desc);
                 Toast.makeText(context, "聊天室解散失败", Toast.LENGTH_SHORT).show();
             }
@@ -326,7 +355,7 @@ public class Live implements TIMConnListener, TIMMessageListener, TIMUserStatusL
      *
      * @param param 消息内容
      */
-    public void send(String param) {
+    public void send(final String param) {
         JSONObject sendJson = new JSONObject();
         try {
             sendJson.put("userAction", 2);
@@ -354,6 +383,13 @@ public class Live implements TIMConnListener, TIMMessageListener, TIMUserStatusL
 
                 @Override
                 public void onSuccess(TIMMessage timMessage) {//发送消息成功
+                    mlist.add(new Person(TCConstants.USER_NAME, param,0));
+                    if (mlist.size() > 1000) {
+                        for (int i = 0; i < 100; i++) {
+                            mlist.remove(i);
+                        }
+                    }
+                    adapter.notifyDataSetChanged();
                     Toast.makeText(context, "发送消息成功", Toast.LENGTH_SHORT).show();
                 }
             });
@@ -374,20 +410,28 @@ public class Live implements TIMConnListener, TIMMessageListener, TIMUserStatusL
             if (elemType == TIMElemType.Text) {
                 //处理文本消息
                 String jsonString = ((TIMTextElem) elem).getText();
-                Log.d(TAG, "接收消息jsonString:" +jsonString);
+                Log.d(TAG, "接收消息jsonString:" + jsonString);
                 try {
-                  //  String jsonString = ((TIMTextElem) elem).getText();
-                   // JSONTokener jsonParser = new JSONTokener(jsonString);
-                  //  JSONObject json = (JSONObject) jsonParser.nextValue();
-                    JSONObject json =new JSONObject(jsonString);
+                    //  String jsonString = ((TIMTextElem) elem).getText();
+                    // JSONTokener jsonParser = new JSONTokener(jsonString);
+                    //  JSONObject json = (JSONObject) jsonParser.nextValue();
+                    JSONObject json = new JSONObject(jsonString);
                     int action = json.getInt("userAction");
                     String userId = json.getString("userId");
                     String userName = json.getString("userName");
+                    int color = json.getInt("color");
                     // userName = TextUtils.isEmpty(userName) ? userId : userName;
                     //  String headPic = (String) json.get("headPic"); //頭像
                     String str = json.getString("msg");
-                    Log.d(TAG, "接收消息action:" + action + "\tuserId:" + userId + "\tuserName:" + userName + "\tstr:" + str);
-                      onReceiveMsg(action, new TCSimpleUserInfo(userId, userName), str);
+                    mlist.add(new Person(userName, str,color));
+                    if (mlist.size() > 1000) {
+                        for (int k = 0; k < 100; k++) {
+                            mlist.remove(k);
+                        }
+                    }
+                    adapter.notifyDataSetChanged();
+                    //  Log.d(TAG, "接收消息action:" + action + "\tuserId:" + userId + "\tuserName:" + userName + "\tstr:" + str+"\n");
+                    //  onReceiveMsg(action, new TCSimpleUserInfo(userId, userName), str);
                 } catch (JSONException e) {
                     Log.d(TAG, "解析消息失敗:" + e.getLocalizedMessage());
                 }
@@ -441,6 +485,8 @@ public class Live implements TIMConnListener, TIMMessageListener, TIMUserStatusL
 
                 for (TIMMessage msg : timMessages) {
                     lastMsg = msg;
+
+
                     Log.d(TAG, "獲取最近10條消息:msg:" + msg.timestamp() + "\tself:" + msg.isSelf() + "\tseq:" + msg.msg.seq());
                 }
 
@@ -448,5 +494,6 @@ public class Live implements TIMConnListener, TIMMessageListener, TIMUserStatusL
             }
         });
     }
-}
 
+
+}

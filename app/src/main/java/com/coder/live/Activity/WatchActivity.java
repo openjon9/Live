@@ -1,17 +1,30 @@
-package com.coder.live;
+package com.coder.live.Activity;
 
 import android.content.Context;
+import android.support.v7.app.AppCompatActivity;
+import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.EditText;
+import android.widget.ListView;
 import android.widget.Toast;
 
+import com.coder.live.Adapter.MyAdapter2;
+import com.coder.live.Adapter.MyAdapter4;
+import com.coder.live.Class.Person;
 import com.coder.live.Class.TCConstants;
+import com.coder.live.Class.TCConstants2;
 import com.coder.live.Class.TCSimpleUserInfo;
+import com.coder.live.IM;
+import com.coder.live.R;
 import com.tencent.TIMCallBack;
 import com.tencent.TIMConnListener;
 import com.tencent.TIMConversation;
 import com.tencent.TIMConversationType;
 import com.tencent.TIMElem;
 import com.tencent.TIMElemType;
+import com.tencent.TIMGroupDetailInfo;
 import com.tencent.TIMGroupManager;
 import com.tencent.TIMManager;
 import com.tencent.TIMMessage;
@@ -20,36 +33,167 @@ import com.tencent.TIMTextElem;
 import com.tencent.TIMUser;
 import com.tencent.TIMUserStatusListener;
 import com.tencent.TIMValueCallBack;
+import com.tencent.rtmp.ITXLivePlayListener;
+import com.tencent.rtmp.TXLiveConstants;
+import com.tencent.rtmp.TXLivePlayConfig;
+import com.tencent.rtmp.TXLivePlayer;
+import com.tencent.rtmp.ui.TXCloudVideoView;
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.UnsupportedEncodingException;
+import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Created by Rey on 2018/6/26.
- */
+public class WatchActivity extends AppCompatActivity implements TIMConnListener, TIMMessageListener, TIMUserStatusListener, IM.TCChatRoomListener {
 
-public class Live implements TIMConnListener, TIMMessageListener, TIMUserStatusListener, IM.TCChatRoomListener {
-
-    private  Context context;
-    String TAG = "liteavsdk";
-
-    private TIMConversation conversation;
+    private TXCloudVideoView mView;
+    private TXLivePlayer mLivePlayer;
+    String flvUrl = "http://18455.liveplay.myqcloud.com/live/18455_3843cec4c2.flv";//直播收看地址
+    private WatchActivity context;
+    private TXLivePlayConfig mPlayConfig;
+    private EditText edtext;
+    private ListView listview;
+    List<Person> mlist;
+    private MyAdapter4 adapter;
     private TIMMessage lastMsg;
+    String TAG = "liteavsdk";
+    private TIMConversation conversation;
+    private String GroupOwner;
+    private InputMethodManager imm;
 
-    public Live(Context applicationContext) {
-        context = applicationContext;
-        TIMManager.getInstance().init(applicationContext);//初始化
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_watch);
+        context = this;
+
+        mView = (TXCloudVideoView) findViewById(R.id.video_view);
+        //创建 player 对象 TXLivePlayer 模块负责实现直播播放功能
+        mLivePlayer = new TXLivePlayer(this);
+        mLivePlayer.setPlayerView(mView);
+
+
+        mPlayConfig = new TXLivePlayConfig();
+        //自动模式
+        mPlayConfig.setAutoAdjustCacheTime(true);
+        mPlayConfig.setMinAutoAdjustCacheTime(1);
+        mPlayConfig.setMaxAutoAdjustCacheTime(5);
+
+        mPlayConfig.setEnableMessage(true);
+        mLivePlayer.setConfig(mPlayConfig);
+
+        // mLivePlayer.setRenderMode(TXLiveConstants.RENDER_MODE_ADJUST_RESOLUTION);//将图像等比例缩放，适配最长边，缩放后的宽和高都不会超过显示区域，居中显示，画面可能会留有黑边。
+        mLivePlayer.setRenderMode(TXLiveConstants.RENDER_MODE_FULL_FILL_SCREEN);//将图像等比例铺满整个屏幕，多余部分裁剪掉，此模式下画面不会留黑边，但可能因为部分区域被裁剪而显示不全。
+        mLivePlayer.startPlay(flvUrl, TXLivePlayer.PLAY_TYPE_LIVE_FLV); //推荐 FLV
+
+
+        mLivePlayer.setPlayListener(new MyITXLivePlayListener());
+
+
+        edtext = (EditText) findViewById(R.id.edtext);
+        listview = (ListView) findViewById(R.id.listview);
+        mlist = new ArrayList<>();
+        adapter = new MyAdapter4(this, mlist);
+        listview.setAdapter(adapter);
+
+        TIMManager.getInstance().init(getApplicationContext());//初始化
         Login();
         //禁用 Crash 上报
         TIMManager.getInstance().disableCrashReport();
 
-        TIMManager.getInstance().addMessageListener(this);
         TIMManager.getInstance().setUserStatusListener(this);
         TIMManager.getInstance().setConnectionListener(this);
 
     }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        mLivePlayer.resume();
+        TIMManager.getInstance().addMessageListener(this);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        mLivePlayer.pause();
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        removeMessageListener(this);
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        mLivePlayer.stopPlay(true); // true 代表清除最后一帧画面
+        mView.onDestroy();
+        mlist = null;
+        adapter = null;
+        removeMessageListener(this);
+        quitGroup();
+        LoginOut();
+    }
+
+    public void sendtext(View view) {
+        imm = (InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (edtext.getText().toString().equals("")) {
+            return;
+        }
+        send(edtext.getText().toString());
+        edtext.setText("");
+        imm.hideSoftInputFromWindow(getWindow().getDecorView().getWindowToken(), 0);
+    }
+
+    public void landScape(View view) {
+        // 设置填充模式
+     //   mLivePlayer.setRenderMode(TXLiveConstants.RENDER_MODE_ADJUST_RESOLUTION);
+// 设置画面渲染方向
+      //  mLivePlayer.setRenderRotation(TXLiveConstants.RENDER_ROTATION_LANDSCAPE);
+    }
+
+    public class MyITXLivePlayListener implements ITXLivePlayListener {
+
+        @Override
+        public void onPlayEvent(int event, Bundle param) {
+            switch (event) {
+                case TXLiveConstants.PLAY_EVT_PLAY_BEGIN://视频播放开始，如果有转菊花什么的这个时候该停了
+                    Toast.makeText(context, "訊號不良", Toast.LENGTH_SHORT).show();
+                    break;
+                case TXLiveConstants.PLAY_EVT_PLAY_LOADING://视频播放 loading，如果能够恢复，之后会有 BEGIN 事件
+                    //Toast.makeText(context, "2007", Toast.LENGTH_SHORT).show();
+                    break;
+                case TXLiveConstants.PLAY_EVT_GET_MESSAGE://用于接收夹在音视频流中的消息
+                    String msg = null;
+                    try {
+                        msg = new String(param.getByteArray(TXLiveConstants.EVT_GET_MSG), "UTF-8");
+                        Toast.makeText(context, msg+"", Toast.LENGTH_SHORT).show();
+                        //   roomListenerCallback.onRecvAnswerMsg(msg);
+                    } catch (UnsupportedEncodingException e) {
+                        e.printStackTrace();
+                    }
+                    break;
+                case TXLiveConstants.PLAY_EVT_PLAY_END://视频播放结束
+                    Toast.makeText(context, "视频播放结束", Toast.LENGTH_SHORT).show();
+                    break;
+                case TXLiveConstants.PLAY_ERR_NET_DISCONNECT://网络断连,且经多次重连亦不能恢复,更多重试请自行重启播放
+                    Toast.makeText(context, "网络断连,请自行重启播放", Toast.LENGTH_SHORT).show();
+                    break;
+            }
+
+        }
+
+        @Override
+        public void onNetStatus(Bundle bundle) {
+
+        }
+    }
+
 
     /********連線監聽**********/
     @Override
@@ -76,7 +220,7 @@ public class Live implements TIMConnListener, TIMMessageListener, TIMUserStatusL
      */
     @Override
     public boolean onNewMessages(List<TIMMessage> list) {
-        Toast.makeText(context, "收到新消息", Toast.LENGTH_SHORT).show();
+        // Toast.makeText(context, "收到新消息", Toast.LENGTH_SHORT).show();
         parseIMMessage(list); //接收消息
         return false;
     }
@@ -106,16 +250,14 @@ public class Live implements TIMConnListener, TIMMessageListener, TIMUserStatusL
     public void Login() {
 // identifier 为用户名，userSig 为用户登录凭证
         TIMUser user = new TIMUser();
-      //  user.setAccountType("29649");
-        //user.setAppIdAt3rd("1400104543");
-        user.setIdentifier(TCConstants.USER_ID);
+        user.setIdentifier(TCConstants2.USER_ID);
 //发起登录请求
-        TIMManager.getInstance().login(TCConstants.IMSDK_APPID, user, TCConstants.USERSIG, new TIMCallBack() {//回调接口
+        TIMManager.getInstance().login(TCConstants2.IMSDK_APPID, user, TCConstants2.USERSIG, new TIMCallBack() {//回调接口
 
             @Override
             public void onSuccess() {//登录成功
                 Toast.makeText(context, "登录成功", Toast.LENGTH_SHORT).show();
-                createGroup();
+                joinGroup();
             }
 
             @Override
@@ -189,87 +331,10 @@ public class Live implements TIMConnListener, TIMMessageListener, TIMUserStatusL
         Toast.makeText(context, "群組已解散", Toast.LENGTH_SHORT).show();
     }
 
-
-    //创建聊天群组 创建者默认加入  創群是主播用
-    // 群类型：私有群（Private）、公开群（Public）、聊天室（ChatRoom）、互动直播聊天室（AVChatRoom）和在线成员广播大群（BChatRoom）
-    public void createGroup() {
-
-        //创建直播大群
-        //groupName , 回調
-        TIMGroupManager.getInstance().createAVChatroomGroup("TVShow", new TIMValueCallBack<String>() {
-            @Override
-            public void onError(int code, String desc) {
-                Log.d(TAG, "创建直播大群失败code:" + code + "\tdesc:" + desc);
-                Toast.makeText(context, "创建直播大群失敗", Toast.LENGTH_SHORT).show();
-            }
-
-            @Override
-            public void onSuccess(String groupId) {//回调返回创建的群组 會自動產生ID
-                Toast.makeText(context, "创建直播大群成功", Toast.LENGTH_SHORT).show();
-                TCConstants.GROUP_ID = groupId;
-                //取得會話物件          會話類型(這是列舉只有4種),群ID
-                conversation = TIMManager.getInstance().getConversation(TIMConversationType.Group, groupId);
-            }
-        });
-
-
-//        TIMGroupManager.CreateGroupParam param = TIMGroupManager.getInstance().new CreateGroupParam();
-//        param.setGroupType("AVChatRoom"); // type 群类型, 目前支持的群类型："Public", "Private", "ChatRoom", "AVChatRoom", "BChatRoom"
-//        param.setGroupName("小直播");//设置要创建的群的名称（必填）
-//        param.setGroupId(TCConstants.GROUP_ID);//设置要创建的群的群 ID
-//        TIMGroupManager.getInstance().createGroup(param, new TIMValueCallBack<String>() {
-//            @Override
-//            public void onError(int i, String s) {
-//                Toast.makeText(context, "聊天群创建失败", Toast.LENGTH_SHORT).show();
-//            }
-//
-//            @Override
-//            public void onSuccess(String roomId) {
-//                Toast.makeText(context, "聊天群创建成功roomId:" + roomId, Toast.LENGTH_SHORT).show();
-//                 conversation = TIMManager.getInstance().getConversation(TIMConversationType.Group, TCConstants.GROUP_ID);
-//            }
-//        });
-    }
-
-    //解散群组  注意：直播大群只有群主可以解散
-    public void deleteGroup() {
-        if (TCConstants.GROUP_ID == null) {
-            return;
-        }
-        TIMGroupManager.getInstance().deleteGroup(TCConstants.GROUP_ID, new TIMCallBack() {
-            @Override
-            public void onError(int code, String desc) {
-                //错误码 code 和错误描述 desc，可用于定位请求失败原因
-                //错误码 code 列表请参见错误码表
-                Log.d(TAG, "解散群组失败code:" + code + "\tdesc:" + desc);
-                Toast.makeText(context, "聊天室解散失败", Toast.LENGTH_SHORT).show();
-            }
-
-            @Override
-            public void onSuccess() {
-                //解散群组成功
-                Toast.makeText(context, "聊天室解散成功", Toast.LENGTH_SHORT).show();
-            }
-        });
-
-//        TIMManager.getInstance().deleteConversation(TIMConversationType.Group, TCConstants.GROUP_ID);
-//        TIMGroupManager.getInstance().deleteGroup(TCConstants.GROUP_ID, new TIMCallBack() {
-//            @Override
-//            public void onError(int i, String s) {
-//                Toast.makeText(context, "聊天室解散失败", Toast.LENGTH_SHORT).show();
-//            }
-//
-//            @Override
-//            public void onSuccess() {
-//                Toast.makeText(context, "聊天室解散成功", Toast.LENGTH_SHORT).show();
-//            }
-//        });
-    }
-
     //加入聊天群组  觀眾用 直播大群：可以任意加入群组。
     public void joinGroup() {
         //群ID,申請理由(選填),回調
-        TIMGroupManager.getInstance().applyJoinGroup(TCConstants.GROUP_ID, "some reason", new TIMCallBack() {
+        TIMGroupManager.getInstance().applyJoinGroup(TCConstants2.GROUP_ID, "some reason", new TIMCallBack() {
             @java.lang.Override
             public void onError(int code, String desc) {
                 Log.d(TAG, "加入聊天群组失败code:" + code + "\tdesc:" + desc);
@@ -280,7 +345,7 @@ public class Live implements TIMConnListener, TIMMessageListener, TIMUserStatusL
             public void onSuccess() {
                 Toast.makeText(context, "加入群组成功", Toast.LENGTH_SHORT).show();
                 //取得會話物件          會話類型(這是列舉只有4種),群ID
-                conversation = TIMManager.getInstance().getConversation(TIMConversationType.Group, TCConstants.GROUP_ID);
+                conversation = TIMManager.getInstance().getConversation(TIMConversationType.Group, TCConstants2.GROUP_ID);
             }
         });
     }
@@ -288,7 +353,7 @@ public class Live implements TIMConnListener, TIMMessageListener, TIMUserStatusL
     //退出群組  觀眾用
     public void quitGroup() {
 
-        TIMGroupManager.getInstance().quitGroup(TCConstants.GROUP_ID, new TIMCallBack() {
+        TIMGroupManager.getInstance().quitGroup(TCConstants2.GROUP_ID, new TIMCallBack() {
 
             @Override
             public void onError(int code, String desc) {
@@ -304,34 +369,18 @@ public class Live implements TIMConnListener, TIMMessageListener, TIMUserStatusL
 
     }
 
-    //禁言 只有主播可以用
-    public void modifyGroupMemberInfoSetSilence(String user, int sec) {
-
-        TIMGroupManager.getInstance().modifyGroupMemberInfoSetSilence(TCConstants.GROUP_ID, user, sec, new TIMCallBack() {
-            @Override
-            public void onError(int code, String desc) {
-                Log.d(TAG, "禁言失败code:" + code + "\tdesc:" + desc);
-                Toast.makeText(context, "禁言失敗", Toast.LENGTH_SHORT).show();
-            }
-
-            @Override
-            public void onSuccess() {
-                Toast.makeText(context, "禁言成功", Toast.LENGTH_SHORT).show();
-            }
-        });
-    }
-
     /**
      * userAction 消息类型 ，可自己设定。比如1代表弹幕消息，2代表普通文本消息
      *
      * @param param 消息内容
      */
-    public void send(String param) {
+    public void send(final String param) {
         JSONObject sendJson = new JSONObject();
         try {
             sendJson.put("userAction", 2);
-            sendJson.put("userId", TCConstants.USER_ID);
-            sendJson.put("userName", TCConstants.USER_NAME);
+            sendJson.put("userId", TCConstants2.USER_ID);
+            sendJson.put("userName", TCConstants2.USER_NAME);
+            sendJson.put("color",1);
             //  sendJson.put("headPic", TCConstants.USER_HEADPIC);
             sendJson.put("msg", param);
         } catch (JSONException e) {
@@ -354,7 +403,15 @@ public class Live implements TIMConnListener, TIMMessageListener, TIMUserStatusL
 
                 @Override
                 public void onSuccess(TIMMessage timMessage) {//发送消息成功
-                    Toast.makeText(context, "发送消息成功", Toast.LENGTH_SHORT).show();
+                    mlist.add(new Person(TCConstants2.USER_NAME, param, 1));
+                    if (mlist.size() > 1000) {
+                        for (int i = 0; i < 100; i++) {
+                            mlist.remove(i);
+                        }
+                    }
+                    adapter.notifyDataSetChanged();
+                    listview.setSelection(mlist.size()-1);
+                    // Toast.makeText(context, "发送消息成功", Toast.LENGTH_SHORT).show();
                 }
             });
     }
@@ -374,58 +431,55 @@ public class Live implements TIMConnListener, TIMMessageListener, TIMUserStatusL
             if (elemType == TIMElemType.Text) {
                 //处理文本消息
                 String jsonString = ((TIMTextElem) elem).getText();
-                Log.d(TAG, "接收消息jsonString:" +jsonString);
+                Log.d(TAG, "接收消息:" + jsonString);
+
                 try {
-                  //  String jsonString = ((TIMTextElem) elem).getText();
-                   // JSONTokener jsonParser = new JSONTokener(jsonString);
-                  //  JSONObject json = (JSONObject) jsonParser.nextValue();
-                    JSONObject json =new JSONObject(jsonString);
+                    JSONObject json = new JSONObject(jsonString);
                     int action = json.getInt("userAction");
                     String userId = json.getString("userId");
                     String userName = json.getString("userName");
+                    int color = json.getInt("color");
                     // userName = TextUtils.isEmpty(userName) ? userId : userName;
                     //  String headPic = (String) json.get("headPic"); //頭像
                     String str = json.getString("msg");
-                    Log.d(TAG, "接收消息action:" + action + "\tuserId:" + userId + "\tuserName:" + userName + "\tstr:" + str);
-                      onReceiveMsg(action, new TCSimpleUserInfo(userId, userName), str);
+                    mlist.add(new Person(userName, str, color));
+                    if (mlist.size() > 1000) {
+                        for (int k = 0; k < 100; k++) {
+                            mlist.remove(k);
+                        }
+                    }
+                    adapter.notifyDataSetChanged();
+                    listview.setSelection(mlist.size()-1);
+                    //  Log.d(TAG, "接收消息action:" + action + "\tuserId:" + userId + "\tuserName:" + userName + "\tstr:" + str+"\n");
+                    //  onReceiveMsg(action, new TCSimpleUserInfo(userId, userName), str);
                 } catch (JSONException e) {
                     Log.d(TAG, "解析消息失敗:" + e.getLocalizedMessage());
                 }
             }
         }
-
-
-//        for (int i = list.size() - 1; i >= 0; i--) {
-//            TIMMessage msg = list.get(i);
-//            for (int j = 0; j < msg.getElementCount(); ++j) {
-//                if (msg.getElement(j) == null)
-//                    continue;
-//                TIMElem elem = msg.getElement(j);
-//                //获取当前元素的类型
-//                TIMElemType elemType = elem.getType();
-//                if (elemType == TIMElemType.Text) {
-//                    //处理文本消息
-//                    try {
-//                        String jsonString = ((TIMTextElem) elem).getText();
-//                        JSONTokener jsonParser = new JSONTokener(jsonString);
-//                        JSONObject json = (JSONObject) jsonParser.nextValue();
-//                        int action = (int) json.get("userAction");
-//                        String userId = (String) json.get("userId");
-//                        String userName = (String) json.get("userName");
-//                        userName = TextUtils.isEmpty(userName) ? userId : userName;
-//                        String headPic = (String) json.get("headPic"); //頭像
-//                        String str = (String) json.get("msg");
-//                        onReceiveMsg(action, new TCSimpleUserInfo(userId, userName, headPic), str);
-//                    } catch (JSONException e) {
-//                        e.printStackTrace();
-//                        // 异常处理代码
-//                    }
-//                } else if (elemType == TIMElemType.Image) {
-//                    //处理图片消息
-//                }//...处理更多消息
-//            }
-//        }
     }
+
+    public void getGroupDeta() {
+        //创建待获取信息的群组 ID 列表
+        ArrayList<String> groupList = new ArrayList<String>();
+        groupList.add(TCConstants2.GROUP_ID);
+        TIMGroupManager.getInstance().getGroupDetailInfo(groupList, new TIMValueCallBack<List<TIMGroupDetailInfo>>() {
+            @Override
+            public void onError(int i, String s) {
+
+            }
+
+            @Override
+            public void onSuccess(List<TIMGroupDetailInfo> timGroupDetailInfos) {
+                for (TIMGroupDetailInfo info : timGroupDetailInfos) {
+                    GroupOwner = info.getGroupOwner(); //獲取群創建者
+                    // info.getMemberNum();  獲取群成員
+                }
+            }
+        });
+
+    }
+
 
     //獲取最近10條消息 此方法为异步方法
     //參數說明  从最后一条消息往前的消息条数，已获取的最后一条消息，当传 null 的时候，从最新的消息开始读取，回调
@@ -448,5 +502,5 @@ public class Live implements TIMConnListener, TIMMessageListener, TIMUserStatusL
             }
         });
     }
-}
 
+}

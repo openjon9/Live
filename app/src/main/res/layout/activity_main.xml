@@ -5,7 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    tools:context="com.coder.live.MainActivity">
+    tools:context="com.coder.live.Activity.MainActivity">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -23,9 +23,50 @@
             android:layout_height="wrap_content"
             android:onClick="watchlive"
             android:text="直播收看" />
+
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:orientation="horizontal">
+
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:onClick="setGroupID"
+            android:text="設定群組ID" />
+
+        <EditText
+            android:id="@+id/edtext"
+            android:hint="觀眾才需要"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
     </LinearLayout>
 
 
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:onClick="createLive"
+            android:text="創直播聊天群" />
+
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:onClick="joinLive"
+            android:text="加入播聊天群" />
+
+    </LinearLayout>
 
 
 </LinearLayout>

@@ -3,6 +3,8 @@ package com.coder.live;
 import android.text.TextUtils;
 import android.util.Log;
 
+import com.coder.live.Class.TCConstants;
+import com.coder.live.Class.TCSimpleUserInfo;
 import com.tencent.TIMCallBack;
 import com.tencent.TIMConnListener;
 import com.tencent.TIMConversation;

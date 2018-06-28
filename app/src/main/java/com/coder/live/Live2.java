@@ -27,10 +27,10 @@ import org.json.JSONObject;
 import java.util.List;
 
 /**
- * Created by Rey on 2018/6/26.
+ * Created by Rey on 2018/6/27.
  */
 
-public class Live implements TIMConnListener, TIMMessageListener, TIMUserStatusListener, IM.TCChatRoomListener {
+public class Live2 implements TIMConnListener ,TIMMessageListener,TIMUserStatusListener,IM.TCChatRoomListener {
 
     private  Context context;
     String TAG = "liteavsdk";
@@ -38,7 +38,7 @@ public class Live implements TIMConnListener, TIMMessageListener, TIMUserStatusL
     private TIMConversation conversation;
     private TIMMessage lastMsg;
 
-    public Live(Context applicationContext) {
+    public Live2(Context applicationContext) {
         context = applicationContext;
         TIMManager.getInstance().init(applicationContext);//初始化
         Login();
@@ -106,7 +106,7 @@ public class Live implements TIMConnListener, TIMMessageListener, TIMUserStatusL
     public void Login() {
 // identifier 为用户名，userSig 为用户登录凭证
         TIMUser user = new TIMUser();
-      //  user.setAccountType("29649");
+        //  user.setAccountType("29649");
         //user.setAppIdAt3rd("1400104543");
         user.setIdentifier(TCConstants.USER_ID);
 //发起登录请求
@@ -115,7 +115,7 @@ public class Live implements TIMConnListener, TIMMessageListener, TIMUserStatusL
             @Override
             public void onSuccess() {//登录成功
                 Toast.makeText(context, "登录成功", Toast.LENGTH_SHORT).show();
-                createGroup();
+                joinGroup();
             }
 
             @Override
@@ -374,9 +374,11 @@ public class Live implements TIMConnListener, TIMMessageListener, TIMUserStatusL
             if (elemType == TIMElemType.Text) {
                 //处理文本消息
                 String jsonString = ((TIMTextElem) elem).getText();
-                Log.d(TAG, "接收消息jsonString:" +jsonString);
+                Log.d(TAG, "接收消息:" +jsonString);
+
+
                 try {
-                  //  String jsonString = ((TIMTextElem) elem).getText();
+                   // String jsonString = ((TIMTextElem) elem).getText();
                    // JSONTokener jsonParser = new JSONTokener(jsonString);
                   //  JSONObject json = (JSONObject) jsonParser.nextValue();
                     JSONObject json =new JSONObject(jsonString);
@@ -449,4 +451,3 @@ public class Live implements TIMConnListener, TIMMessageListener, TIMUserStatusL
         });
     }
 }
-

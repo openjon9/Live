@@ -1,4 +1,4 @@
-package com.coder.live;
+package com.coder.live.Class;
 
 /**
  * Created by Rey on 2018/6/26.
